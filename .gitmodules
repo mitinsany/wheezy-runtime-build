@@ -1,0 +1,36 @@
+[submodule "upstream/zlib"]
+	path = upstream/zlib
+	url = https://github.com/madler/zlib.git
+[submodule "upstream/php"]
+	path = upstream/php
+	url = https://github.com/php/php-src.git
+[submodule "upstream/openssl"]
+	path = upstream/openssl
+	url = https://github.com/openssl/openssl.git
+[submodule "upstream/sqlite"]
+	path = upstream/sqlite
+	url = https://github.com/sqlite/sqlite.git
+[submodule "upstream/curl"]
+	path = upstream/curl
+	url = https://github.com/curl/curl.git
+[submodule "upstream/libxml2"]
+	path = upstream/libxml2
+	url = https://github.com/GNOME/libxml2.git
+[submodule "upstream/oniguruma"]
+	path = upstream/oniguruma
+	url = https://github.com/kkos/oniguruma.git
+[submodule "upstream/pcre2"]
+	path = upstream/pcre2
+	url = https://github.com/PCRE2Project/pcre2.git
+[submodule "upstream/net-snmp"]
+	path = upstream/net-snmp
+	url = https://github.com/net-snmp/net-snmp.git
+[submodule "upstream/apr"]
+	path = upstream/apr
+	url = https://github.com/apache/apr.git
+[submodule "upstream/apr-util"]
+	path = upstream/apr-util
+	url = https://github.com/apache/apr-util.git
+[submodule "upstream/httpd"]
+	path = upstream/httpd
+	url = https://github.com/apache/httpd.git
