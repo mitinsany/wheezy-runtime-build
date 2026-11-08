@@ -59,7 +59,7 @@ jobs:
           retention-days: 90
 
   repository:
-    if: (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' && vars.RELEASE_APPROVED == 'true'
+    if: (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.RELEASE_APPROVED == 'true'
     needs: build
     runs-on: ubuntu-24.04
     environment: apt-signing
@@ -122,7 +122,7 @@ jobs:
           path: public
 
   deploy:
-    if: (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     needs: repository
     runs-on: ubuntu-24.04
     permissions:
