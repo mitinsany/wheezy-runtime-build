@@ -1,0 +1,138 @@
+name: Build and publish packages
+
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+
+concurrency:
+  group: runtime-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          submodules: true
+          persist-credentials: false
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf apt-utils
+      - name: Check build and smoke-test contracts
+        run: |
+          sh tests/build-contract.sh
+          sh tests/test-packages-script.sh
+          sh tests/check-sources.sh
+          sh tests/package-guards.sh
+          sh tests/fetch-previous.sh
+          sh tests/retain-packages.sh
+      - name: Build packages
+        env:
+          PACKAGE_VERSION: 0.1.0~experimental${{ github.run_number }}
+        run: sh scripts/build.sh
+      - name: Check package output
+        run: |
+          set -- out/debs/*.deb
+          test -f "$1" || { echo 'No Debian packages produced' >&2; exit 1; }
+      - name: Test packages
+        run: sh scripts/test-packages.sh
+      - name: Test APT signature and integrity checks on Wheezy
+        run: sh scripts/test-apt.sh
+      - name: Preserve tested packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: debian-packages
+          path: out/debs/*.deb
+          if-no-files-found: error
+          retention-days: 90
+
+  repository:
+    if: (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' && vars.RELEASE_APPROVED == 'true'
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: apt-signing
+    permissions:
+      contents: read
+      deployments: read
+    steps:
+      - name: Check out publication scripts
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Download tested packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: debian-packages
+          path: new-packages
+      - name: Install APT index tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apt-utils
+      - name: Create and sign APT repository
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          test -n "$GPG_PRIVATE_KEY"
+          export GNUPGHOME="$(mktemp -d)"
+          trap 'rm -rf "$GNUPGHOME"' EXIT
+          chmod 700 "$GNUPGHOME"
+          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          unset GPG_PRIVATE_KEY
+          fingerprint="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1 == "fpr" { print $10; exit }')"
+          test -n "$fingerprint"
+          mkdir previous public
+          deployments="$(gh api -X GET "repos/$GITHUB_REPOSITORY/deployments" -f environment=github-pages -f per_page=1 --jq 'length')"
+          case "$deployments" in ''|*[!0-9]*) exit 1 ;; esac
+          if [ "$deployments" = 0 ]; then export ALLOW_EMPTY=1; fi
+          base="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
+          sh scripts/fetch-previous.sh "$base" previous
+          sh scripts/retain-packages.sh previous new-packages public
+          test "$(du -sm public | cut -f1)" -lt 850 || { echo 'APT snapshot is too large for Pages' >&2; exit 1; }
+          cd public
+          apt-ftparchive packages . > Packages
+          gzip -n -9 -c Packages > Packages.gz
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin='Wheezy Runtime' \
+            -o APT::FTPArchive::Release::Label='Wheezy Runtime' \
+            -o APT::FTPArchive::Release::Architectures=i386 release . > Release
+          printf 'Valid-Until: %s\n' "$(date -u -d '+14 days' '+%a, %d %b %Y %H:%M:%S UTC')" >> Release
+          printf '%s\n' "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user "$fingerprint" --digest-algo SHA256 --armor --detach-sign --output Release.gpg Release
+          printf '%s\n' "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 --local-user "$fingerprint" --digest-algo SHA256 --clearsign --output InRelease Release
+          unset GPG_PASSPHRASE
+          gpg --batch --armor --export "$fingerprint" > public-key.asc
+          gpg --batch --verify Release.gpg Release
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: public
+
+  deploy:
+    if: (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    needs: repository
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+      actions: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
