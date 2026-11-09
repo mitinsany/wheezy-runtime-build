@@ -31,7 +31,8 @@ printf '%s\n' \
     'a52b27ca2ac5b0b2bdbbae2444ca857c819b0116120df40dba2ee45d949381bd  /var/lib/apt/lists/archive.debian.org_debian-security_dists_wheezy_updates_Release' \
     '4ae2e7ccb87e74d8f2ca09fbc2641d2f9fedbc8b31a33c7cc81e3bac4d418714  /var/lib/apt/lists/archive.debian.org_debian_dists_wheezy_main_binary-i386_Packages.gz' \
     'cab43f54c0c371be2d938c7354cac5225e001bc1bd2b3cdaf2b88504080321d9  /var/lib/apt/lists/archive.debian.org_debian-security_dists_wheezy_updates_main_binary-i386_Packages.gz' | sha256sum -c -
-apt-get install -y --no-install-recommends php5-cli php5-sqlite libbz2-1.0 libuuid1 libexpat1 procps file
+apt-get install -y --no-install-recommends php5-cli php5-sqlite libbz2-1.0 libuuid1 libexpat1 procps file apt-transport-https ca-certificates
+sha256sum /usr/lib/apt/methods/https > /tmp/old-apt-https.sha256
 
 old_php=$(command -v php)
 [ -n "$old_php" ] || fail 'original PHP is missing'
@@ -88,6 +89,9 @@ if ldd /usr/lib/i386-linux-gnu/libsqlite3.so.3 | grep -q 'not found'; then
     fail 'SQLite dependency is missing'
 fi
 dpkg -i /packages/*.deb
+sha256sum -c /tmp/old-apt-https.sha256 || fail 'system HTTPS method changed'
+[ -x /usr/lib/wheezy-runtime/apt/methods/https ] || fail 'optional HTTPS method missing'
+apt-get -o Dir::Bin::Methods=/usr/lib/wheezy-runtime/apt/methods update || fail 'APT does not work with optional methods'
 audit=$(dpkg --audit) || fail 'dpkg audit failed'
 [ -z "$audit" ] || fail 'dpkg reports incomplete packages'
 while IFS= read -r name; do
@@ -154,5 +158,9 @@ printf '%s\n' '<?php echo PHP_VERSION;' > /tmp/www/index.php
 /opt/wheezy-httpd/bin/httpd -d /opt/wheezy-httpd -f /tmp/httpd.conf -k start || fail 'Apache did not start'
 "$php84" -r 'if (file_get_contents("http://127.0.0.1:18888/index.php") !== PHP_VERSION) exit(1);' || fail 'Apache did not execute PHP'
 /opt/wheezy-httpd/bin/httpd -d /opt/wheezy-httpd -f /tmp/httpd.conf -k stop || fail 'Apache did not stop'
+dpkg -r wr-apt-https || fail 'optional HTTPS method removal failed'
+sha256sum -c /tmp/old-apt-https.sha256 || fail 'system HTTPS method changed after removal'
+[ ! -e /usr/lib/wheezy-runtime/apt/methods/https ] || fail 'optional HTTPS method remains installed'
+apt-get update || fail 'system APT stopped working after removal'
 echo 'Wheezy package smoke test passed'
 CONTAINER

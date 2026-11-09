@@ -12,7 +12,7 @@ if [ "$COMPONENT" != zlib ] && [ "$COMPONENT" != openssl ]; then
     ACLOCAL_PATH=/usr/share/aclocal
     export ACLOCAL_PATH
 fi
-components='zlib openssl sqlite pcre2 oniguruma libxml2 curl net-snmp apr apr-util httpd php'
+components='zlib openssl sqlite pcre2 oniguruma libxml2 curl apt-https net-snmp apr apr-util httpd php'
 for component in $components; do
     echo "Building $component"
     sh "$SRC/scripts/components/$component.sh"

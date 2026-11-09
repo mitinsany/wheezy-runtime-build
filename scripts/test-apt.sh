@@ -3,7 +3,7 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 package_dir=${PACKAGE_DIR:-"$root/out/debs"}
-for tool in docker gpg dpkg-deb dpkg-scanpackages apt-ftparchive gzip; do
+for tool in docker gpg dpkg-deb dpkg-scanpackages apt-ftparchive gzip openssl python3; do
     command -v "$tool" >/dev/null 2>&1 || { echo "Missing required tool: $tool" >&2; exit 1; }
 done
 set -- "$package_dir"/*.deb
@@ -14,6 +14,17 @@ trap 'rm -rf "$tmp"' EXIT
 trap 'exit 1' HUP INT TERM
 mkdir -m 700 "$tmp/gnupg"
 mkdir -p "$tmp/repo/valid" "$tmp/repo/tampered" "$tmp/repo/tampered-package" "$tmp/repo/expired"
+mkdir -p "$tmp/repo/redirect"
+ports=$(python3 -c 'import socket; s = [socket.socket() for _ in range(3)]; [x.bind(("127.0.0.1", 0)) for x in s]; print(" ".join(str(x.getsockname()[1]) for x in s))')
+set -- $ports
+https_port=$1 redirect_port=$2 http_port=$3
+set -- "$package_dir"/*.deb
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=localhost' \
+    -addext 'subjectAltName=DNS:localhost' -keyout "$tmp/repo/server.key" \
+    -out "$tmp/repo/server.crt" >/dev/null 2>&1
+for name in Release.gpg Release Packages Packages.gz Packages.xz Packages.bz2 Packages.lzma; do
+    printf 'HTTP/1.0 302 Found\r\nLocation: http://localhost:%s/Release.gpg\r\nContent-Length: 0\r\n\r\n' "$http_port" > "$tmp/repo/redirect/$name"
+done
 mkdir -p "$tmp/probe/DEBIAN"
 printf 'Package: apt-integration-probe\nVersion: 1\nArchitecture: all\nMaintainer: Test <test@example.invalid>\nDescription: Disposable APT verification probe\n' > "$tmp/probe/DEBIAN/control"
 dpkg-deb --build "$tmp/probe" "$tmp/repo/valid/apt-integration-probe.deb" >/dev/null
@@ -105,4 +116,51 @@ else
     fail 'expired release outcome was inconclusive'
 fi
 echo 'APT integration test completed'
+CONTAINER
+
+(cd "$tmp/repo" && exec openssl s_server -quiet -WWW -accept "127.0.0.1:$https_port" -cert "$tmp/repo/server.crt" -key "$tmp/repo/server.key") >"$tmp/https-server.log" 2>&1 &
+server=$!
+(cd "$tmp/repo/redirect" && exec openssl s_server -quiet -HTTP -accept "127.0.0.1:$redirect_port" -cert "$tmp/repo/server.crt" -key "$tmp/repo/server.key") >"$tmp/redirect-server.log" 2>&1 &
+redirect=$!
+trap 'kill "$server" "$redirect" 2>/dev/null || true; rm -rf "$tmp"' EXIT
+sleep 1
+kill -0 "$server" "$redirect" 2>/dev/null || { echo 'HTTPS fixture server failed to start' >&2; exit 1; }
+docker run --rm --platform linux/386 --network host -e HTTPS_PORT="$https_port" -e REDIRECT_PORT="$redirect_port" \
+    --mount "type=bind,src=$tmp/repo,dst=/repo,readonly" \
+    --mount "type=bind,src=$package_dir,dst=/packages,readonly" \
+    -i debian/eol@sha256:bddcd5525189f4afeb098fba34e3131c1483fe7f54aebfad9befcb481bd8f9ed /bin/sh -s <<'CONTAINER'
+set -eu
+export LC_ALL=C DEBIAN_FRONTEND=noninteractive
+fail() { echo "HTTPS integration test failed: $*" >&2; exit 1; }
+apt-get -o Acquire::Check-Valid-Until=false update >/dev/null
+apt-get -y install ca-certificates openssl >/dev/null
+dpkg -i /packages/wr-zlib_*.deb /packages/wr-openssl_*.deb /packages/wr-curl_*.deb /packages/wr-apt-https_*.deb >/dev/null
+apt-key add /repo/key.gpg >/dev/null
+update_repo() {
+    name=$1; url=$2; ca=$3
+    mkdir -p "/tmp/$name/partial"
+    printf 'deb %s ./\n' "$url" > /tmp/https-source.list
+    apt-get -o Dir::Bin::Methods=/usr/lib/wheezy-runtime/apt/methods \
+        -o Dir::Etc::sourcelist=/tmp/https-source.list -o Dir::Etc::sourceparts=- \
+        -o Dir::State::lists="/tmp/$name" -o Acquire::Check-Valid-Until=true \
+        -o Acquire::https::CaInfo="$ca" update >"/tmp/$name.log" 2>&1
+}
+update_repo good "https://localhost:$HTTPS_PORT/valid/" /repo/server.crt || { cat /tmp/good.log; fail 'signed HTTPS repository failed'; }
+find /tmp/good -maxdepth 1 -name '*Packages*' | grep -q . || fail 'HTTPS index missing'
+apt-get -y --download-only -o Dir::Bin::Methods=/usr/lib/wheezy-runtime/apt/methods \
+    -o Dir::Etc::sourcelist=/tmp/https-source.list -o Dir::Etc::sourceparts=- \
+    -o Dir::State::lists=/tmp/good -o Acquire::Check-Valid-Until=true \
+    -o Acquire::https::CaInfo=/repo/server.crt install apt-integration-probe >/tmp/https-download.log 2>&1 || {
+        cat /tmp/https-download.log; fail 'signed HTTPS package download failed';
+    }
+if update_repo badca "https://localhost:$HTTPS_PORT/valid/" /dev/null; then fail 'invalid CA accepted'; fi
+grep -qi 'trust anchors\|certificate' /tmp/badca.log || { cat /tmp/badca.log; fail 'invalid CA failed for an unrelated reason'; }
+if find /tmp/badca -maxdepth 1 -name '*Packages*' | grep -q .; then fail 'invalid CA installed an index'; fi
+if update_repo badhost "https://127.0.0.1:$HTTPS_PORT/valid/" /repo/server.crt; then fail 'invalid hostname accepted'; fi
+grep -qi 'hostname\|subject name\|certificate' /tmp/badhost.log || { cat /tmp/badhost.log; fail 'hostname failed for an unrelated reason'; }
+if find /tmp/badhost -maxdepth 1 -name '*Packages*' | grep -q .; then fail 'invalid hostname installed an index'; fi
+if update_repo downgrade "https://localhost:$REDIRECT_PORT/" /repo/server.crt; then fail 'HTTP redirect accepted'; fi
+grep -qi 'protocol.*http.*disabled\|redirect.*protocol' /tmp/downgrade.log || { cat /tmp/downgrade.log; fail 'HTTP downgrade was not explicitly blocked'; }
+if find /tmp/downgrade -maxdepth 1 -name '*Packages*' | grep -q .; then fail 'HTTP redirect installed an index'; fi
+echo 'APT HTTPS integration test completed'
 CONTAINER

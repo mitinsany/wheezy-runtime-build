@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-COMPONENTS='zlib openssl sqlite pcre2 oniguruma libxml2 curl net-snmp apr apr-util httpd php'
+COMPONENTS='zlib openssl sqlite pcre2 oniguruma libxml2 curl apt-https net-snmp apr apr-util httpd php'
 COMPONENT=all
 case "${1:-}" in
     --list) printf '%s\n' $COMPONENTS; exit 0 ;;
@@ -33,6 +33,7 @@ mkdir -p "$ROOT/out"
 build_dir=$(mktemp -d "$ROOT/out/build.XXXXXX")
 if [ "$COMPONENT" = all ]; then
     sh "$ROOT/scripts/check-sources.sh" "$ROOT" > "$build_dir/source-revisions.txt"
+    printf '%s\n' 'apt 0.9.7.9+deb7u7 sha256:16816387711ee428d94a940bd3223fb7149c39666dd1cdc9633fbfbbe8933cb8' >> "$build_dir/source-revisions.txt"
 fi
 mkdir -p "$build_dir/stage" "$build_dir/tools"
 if [ "$COMPONENT" != zlib ] && [ "$COMPONENT" != openssl ]; then

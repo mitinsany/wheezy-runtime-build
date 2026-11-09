@@ -11,7 +11,7 @@ command -v readelf >/dev/null || { echo 'readelf is required' >&2; exit 1; }
 for file in lib/libz.so.1 lib/libsqlite3.so lib/libcrypto.so.3 lib/libssl.so.3 \
     lib/libcurl.so.4 lib/libnetsnmp.so.45 lib/libxml2.so.16 lib/libonig.so.5 \
     lib/libpcre2-8.so.0 lib/libapr-1.so.0 lib/libaprutil-1.so.0 \
-    bin/php bin/openssl lib/ossl-modules/legacy.so apache24/bin/httpd apache24/modules/libphp.so share/snmp/mibs; do
+    bin/php bin/openssl bin/apt-https-wr share/licenses/apt/COPYING lib/ossl-modules/legacy.so apache24/bin/httpd apache24/modules/libphp.so share/snmp/mibs; do
     test -e "$STAGE/$file" || { echo "Missing build output: $file" >&2; exit 1; }
 done
 if readelf -d "$STAGE/apache24/modules/libphp.so" | grep -q TEXTREL; then
@@ -72,6 +72,15 @@ patch_needed "$DIR/usr/lib/i386-linux-gnu/wheezy-runtime/ossl-modules/legacy.so"
 license openssl LICENSE.txt
 finish
 libpkg wr-curl "libc6 (>= 2.13), wr-zlib (= $VERSION), wr-openssl (= $VERSION)" 'cURL' libcurl.so.4 libcurl.so.4.8.0 libcurl.so.8; license curl COPYING; finish
+newpkg wr-apt-https "libc6 (>= 2.13), libgcc1, libstdc++6, libapt-pkg4.12, ca-certificates, wr-curl (= $VERSION)" 'Optional APT HTTPS method'
+mkdir -p "$DIR/usr/lib/wheezy-runtime/apt/methods" "$DIR/usr/share/doc/$PKG"
+cp "$STAGE/bin/apt-https-wr" "$DIR/usr/lib/wheezy-runtime/apt/methods/https"
+patch_needed "$DIR/usr/lib/wheezy-runtime/apt/methods/https"
+for method in bzip2 cdrom copy file ftp gpgv gzip http lzma mirror rred rsh ssh xz; do
+    ln -s "/usr/lib/apt/methods/$method" "$DIR/usr/lib/wheezy-runtime/apt/methods/$method"
+done
+cp "$STAGE/share/licenses/apt/COPYING" "$DIR/usr/share/doc/$PKG/copyright"
+finish
 libpkg wr-snmp "libc6 (>= 2.13), wr-openssl (= $VERSION)" 'Net-SNMP' libnetsnmp.so.45 libnetsnmp.so.45 libnetsnmp.so.45
 mkdir -p "$DIR/usr/share/wheezy-runtime/snmp"
 cp -a "$STAGE/share/snmp/mibs" "$DIR/usr/share/wheezy-runtime/snmp/"

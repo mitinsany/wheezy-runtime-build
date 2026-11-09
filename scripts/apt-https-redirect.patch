@@ -1,0 +1,7 @@
+--- a/methods/https.cc
++++ b/methods/https.cc
+@@ -235,2 +235,4 @@
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, AllowRedirect);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10);
++   if (curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "https") != CURLE_OK)
++      return _error->Error("Unable to restrict HTTPS redirects");

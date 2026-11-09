@@ -47,7 +47,9 @@ jobs:
           set -- out/debs/*.deb
           test -f "$1" || { echo 'No Debian packages produced' >&2; exit 1; }
       - name: Test packages
-        run: sh scripts/test-packages.sh
+        run: |
+          sh tests/apt-https-package.sh
+          sh scripts/test-packages.sh
       - name: Test APT signature and integrity checks on Wheezy
         run: sh scripts/test-apt.sh
       - name: Preserve tested packages

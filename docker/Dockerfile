@@ -9,5 +9,5 @@ RUN apt-get -o Acquire::Check-Valid-Until=false update && \
     DEBIAN_FRONTEND=noninteractive apt-get -y install \
       build-essential autoconf automake libtool pkg-config perl file xz-utils \
       libexpat1-dev libbz2-dev uuid-dev libdb-dev gawk ca-certificates \
-      bison re2c tcl8.5 zlib1g-dev python && \
+      bison re2c tcl8.5 zlib1g-dev python libapt-pkg-dev && \
     rm -rf /var/lib/apt/lists/*
