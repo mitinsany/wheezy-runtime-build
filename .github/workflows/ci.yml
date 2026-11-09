@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
     tags: ['*']
+    paths-ignore:
+      - 'site/**'
+      - '.github/workflows/pages-only.yml'
   pull_request:
   workflow_dispatch:
   schedule:
@@ -118,6 +121,7 @@ jobs:
           unset GPG_PASSPHRASE
           gpg --batch --armor --export "$fingerprint" > public-key.asc
           gpg --batch --verify Release.gpg Release
+          cp "$GITHUB_WORKSPACE/site/index.html" index.html
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wheezy Runtime APT Repository</title>
+  <style>
+    :root { color-scheme: light dark; font: 15px/1.5 system-ui, sans-serif; }
+    body { margin: 0; background: #f4f6f8; color: #202a34; }
+    header { background: #243444; color: #fff; padding: 20px 24px; }
+    header div, main { max-width: 1040px; margin: auto; }
+    h1 { margin: 0; font-size: 22px; }
+    main { padding: 20px 24px; }
+    h2 { font-size: 17px; margin: 26px 0 8px; }
+    p { margin: 8px 0; }
+    a { color: #1766b2; }
+    pre { overflow-x: auto; padding: 12px; background: #e7ebef; border: 1px solid #cbd4dd; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; background: white; }
+    th, td { padding: 9px 10px; border-bottom: 1px solid #dce2e8; text-align: left; overflow-wrap: anywhere; }
+    th { background: #e7ebef; }
+    .notice { border-left: 4px solid #cf8c1d; padding: 8px 12px; background: #fff2d5; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #141c24; color: #e3e9ed; } a { color: #80bfff; }
+      table { background: #1d2934; } th, pre { background: #273744; border-color: #405161; }
+      td, th { border-color: #405161; } .notice { background: #473b25; }
+    }
+  </style>
+</head>
+<body>
+  <header><div><h1>Wheezy Runtime APT Repository</h1></div></header>
+  <main>
+    <p class="notice">Experimental i386 packages for Debian Wheezy. Test compatibility before production use.</p>
+    <h2>Repository</h2>
+    <pre>deb https://mitinsany.github.io/wheezy-runtime-build/ ./</pre>
+    <p>Older Wheezy clients need a compatible HTTPS transport. Verify the archive signing key through a trusted independent channel before installing it.</p>
+    <p>Signing key fingerprint: <code>2151 9020 333B C665 C690 2273 DF94 1662 BCCC F2A6</code></p>
+    <p><a href="public-key.asc">Public key</a> · <a href="Release">Release</a> · <a href="Packages">Package index</a> · <a href="https://github.com/mitinsany/wheezy-runtime-build">Source repository</a></p>
+    <h2>Packages</h2>
+    <table><thead><tr><th>Package</th><th>Version</th><th>Architecture</th></tr></thead><tbody id="packages"><tr><td colspan="3">Loading package index…</td></tr></tbody></table>
+  </main>
+  <script>
+    fetch('Packages', { cache: 'no-store' }).then(function (response) {
+      if (!response.ok) throw new Error('Package index unavailable');
+      return response.text();
+    }).then(function (index) {
+      var body = document.getElementById('packages');
+      body.textContent = '';
+      index.trim().split(/\n\s*\n/).forEach(function (block) {
+        var fields = {};
+        block.split('\n').forEach(function (line) {
+          var match = /^(Package|Version|Architecture|Filename):\s*(.*)$/.exec(line);
+          if (match) fields[match[1]] = match[2];
+        });
+        if (!fields.Package || !/^\.\/[A-Za-z0-9][A-Za-z0-9+._~-]*\.deb$/.test(fields.Filename || '')) return;
+        var row = document.createElement('tr');
+        var name = document.createElement('td');
+        var link = document.createElement('a');
+        link.href = fields.Filename;
+        link.textContent = fields.Package;
+        name.appendChild(link);
+        row.appendChild(name);
+        ['Version', 'Architecture'].forEach(function (key) {
+          var cell = document.createElement('td');
+          cell.textContent = fields[key] || '';
+          row.appendChild(cell);
+        });
+        body.appendChild(row);
+      });
+      if (!body.children.length) throw new Error('No packages found');
+    }).catch(function () {
+      var body = document.getElementById('packages');
+      body.textContent = '';
+      var row = body.insertRow();
+      var cell = row.insertCell();
+      cell.colSpan = 3;
+      cell.textContent = 'Package index is unavailable.';
+    });
+  </script>
+</body>
+</html>

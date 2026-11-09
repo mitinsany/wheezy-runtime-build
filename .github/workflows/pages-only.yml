@@ -1,0 +1,63 @@
+name: Publish repository page
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages-only.yml'
+
+concurrency:
+  group: runtime-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out page and archive key
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Preserve verified archive and add page
+        run: |
+          set -eu
+          export GNUPGHOME="$(mktemp -d)"
+          trap 'rm -rf "$GNUPGHOME"' EXIT
+          chmod 700 "$GNUPGHOME"
+          gpg --batch --import site/archive-signing.asc
+          mkdir public
+          base="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
+          sh scripts/fetch-previous.sh "$base" public
+          curl -qfsSL --proto '=https' --proto-redir '=https' -o public/InRelease "$base/InRelease"
+          curl -qfsSL --proto '=https' --proto-redir '=https' -o public/Packages.gz "$base/Packages.gz"
+          gpg --batch --decrypt public/InRelease > "$GNUPGHOME/release"
+          cmp public/Release "$GNUPGHOME/release"
+          hash="$(awk '/^SHA256:$/ { section=1; next } /^[^[:space:]]/ { section=0 } section && $3 == "Packages.gz" { print $1 }' public/Release)"
+          test -n "$hash"
+          test "$(sha256sum public/Packages.gz | cut -d ' ' -f1)" = "$hash"
+          gzip -cd public/Packages.gz | cmp - public/Packages
+          cp site/archive-signing.asc public/public-key.asc
+          cp site/index.html public/index.html
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: public
+
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
