@@ -46,5 +46,11 @@ For the initial installation on a host without working HTTPS, obtain the package
 and its dependencies on a trusted HTTPS-capable host, verify them against the
 signed repository metadata using a separately trusted signing key, and transfer
 the verified files. The package itself does not bootstrap repository trust.
+
+To exercise this bootstrap in a disposable Wheezy container, run
+`sh scripts/test-bootstrap.sh`. The test downloads the published archive,
+uses the checked-in public key and APT's signature checks, installs the HTTPS
+method and its dependencies, and updates the index over HTTPS. It does not
+configure the host system. It requires Docker, GPG, curl and network access.
 Upgrading runtime components does not make the underlying OS supported or
 secure. PHP 8.4 compatibility with existing applications is a separate concern.
