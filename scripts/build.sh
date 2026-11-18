@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-COMPONENTS='zlib openssl sqlite pcre2 oniguruma libxml2 curl apt-https net-snmp apr apr-util httpd php'
+COMPONENTS='redis zlib openssl sqlite pcre2 oniguruma libxml2 curl apt-https net-snmp apr apr-util httpd php'
 COMPONENT=all
 case "${1:-}" in
     --list) printf '%s\n' $COMPONENTS; exit 0 ;;
@@ -36,7 +36,7 @@ if [ "$COMPONENT" = all ]; then
     printf '%s\n' 'apt 0.9.7.9+deb7u7 sha256:16816387711ee428d94a940bd3223fb7149c39666dd1cdc9633fbfbbe8933cb8' >> "$build_dir/source-revisions.txt"
 fi
 mkdir -p "$build_dir/stage" "$build_dir/tools"
-if [ "$COMPONENT" != zlib ] && [ "$COMPONENT" != openssl ]; then
+if [ "$COMPONENT" != redis ] && [ "$COMPONENT" != zlib ] && [ "$COMPONENT" != openssl ]; then
     TOOLS_DIR="$build_dir/tools" sh "$ROOT/scripts/fetch-build-tools.sh"
 fi
 docker build --platform linux/386 -t wheezy-runtime-builder -f "$ROOT/docker/Dockerfile" "$ROOT"

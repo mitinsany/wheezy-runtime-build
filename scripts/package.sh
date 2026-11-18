@@ -4,21 +4,29 @@ set -eu
 : "${STAGE:?Set STAGE to the completed build output}"
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 VERSION=${PACKAGE_VERSION:-0.1.0~experimental1}
+PACKAGE_COMPONENT=${PACKAGE_COMPONENT:-all}
+case "$PACKAGE_COMPONENT" in all|redis) ;; *) echo 'Unknown package component' >&2; exit 2 ;; esac
 case "$VERSION" in *[!A-Za-z0-9.+:~_-]*|'') echo 'Invalid package version' >&2; exit 1 ;; esac
-command -v patchelf >/dev/null || { echo 'patchelf is required' >&2; exit 1; }
 command -v dpkg-deb >/dev/null || { echo 'dpkg-deb is required' >&2; exit 1; }
+if [ "$PACKAGE_COMPONENT" = all ]; then
+command -v patchelf >/dev/null || { echo 'patchelf is required' >&2; exit 1; }
 command -v readelf >/dev/null || { echo 'readelf is required' >&2; exit 1; }
 for file in lib/libz.so.1 lib/libsqlite3.so lib/libcrypto.so.3 lib/libssl.so.3 \
     lib/libcurl.so.4 lib/libnetsnmp.so.45 lib/libxml2.so.16 lib/libonig.so.5 \
     lib/libpcre2-8.so.0 lib/libapr-1.so.0 lib/libaprutil-1.so.0 \
-    bin/php bin/openssl bin/apt-https-wr share/licenses/apt/COPYING lib/ossl-modules/legacy.so apache24/bin/httpd apache24/modules/libphp.so share/snmp/mibs; do
+    bin/php bin/openssl bin/apt-https-wr bin/redis-server bin/redis-cli share/licenses/apt/COPYING lib/ossl-modules/legacy.so apache24/bin/httpd apache24/modules/libphp.so share/snmp/mibs; do
     test -e "$STAGE/$file" || { echo "Missing build output: $file" >&2; exit 1; }
 done
 if readelf -d "$STAGE/apache24/modules/libphp.so" | grep -q TEXTREL; then
     echo 'PHP Apache module has unsafe text relocations' >&2
     exit 1
 fi
-FINAL_OUT="$ROOT/out/debs"
+else
+    for file in bin/redis-server bin/redis-cli; do
+        test -e "$STAGE/$file" || { echo "Missing build output: $file" >&2; exit 1; }
+    done
+fi
+FINAL_OUT=${PACKAGE_OUT:-"$ROOT/out/debs"}
 test ! -e "$FINAL_OUT" || { echo 'Output already exists; move it before rebuilding' >&2; exit 1; }
 OUT=$(mktemp -d "$ROOT/out/.debs.XXXXXX")
 WORK=$(mktemp -d "$ROOT/out/packages.XXXXXX")
@@ -58,6 +66,18 @@ libpkg() {
     patch_needed "$DIR/usr/lib/i386-linux-gnu/$real"
     if [ "$real" != "$soname" ]; then ln -s "$real" "$DIR/usr/lib/i386-linux-gnu/$soname"; fi
 }
+
+newpkg wr-redis 'libc6 (>= 2.13), libgcc1' 'Redis server and client; no service is enabled'
+mkdir -p "$DIR/usr/local/bin"
+cp "$STAGE/bin/redis-server" "$DIR/usr/local/bin/redis-server-wheezy"
+cp "$STAGE/bin/redis-cli" "$DIR/usr/local/bin/redis-cli-wheezy"
+license redis COPYING
+finish
+if [ "$PACKAGE_COMPONENT" = redis ]; then
+    mv "$OUT" "$FINAL_OUT"
+    echo "Packages: $FINAL_OUT"
+    exit 0
+fi
 
 libpkg wr-zlib 'libc6 (>= 2.13)' 'zlib' libz.so.1 libz.so.1.4 libz.so.2; license zlib LICENSE; finish
 libpkg wr-sqlite "libc6 (>= 2.13), wr-zlib (= $VERSION)" 'SQLite' libsqlite3.so libsqlite3.so.3.54.1 libsqlite3.so.3; license sqlite LICENSE.md; finish

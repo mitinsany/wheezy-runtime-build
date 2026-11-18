@@ -26,6 +26,13 @@ packages if a component is missing or fails. `sh scripts/test-packages.sh`
 installs generated packages in a disposable container. Build output is under
 `out/` and is not committed.
 
+Redis 7.2 is included as the isolated `wr-redis` package. Its server and client
+use suffixed executable names and do not install or start a service. Migrating
+an existing Redis installation, its configuration and its AOF requires separate
+compatibility and recovery testing before deployment.
+To package only a Redis component build, set `STAGE` to its output directory and
+run `PACKAGE_COMPONENT=redis PACKAGE_OUT=out/debs-redis sh scripts/package.sh`.
+
 The builder uses Debian's historical archive and disables expiry checks for
 archived release metadata. It retains APT signature verification and pins the
 historically signed Release files and i386 package indexes by SHA-256. Bootstrap

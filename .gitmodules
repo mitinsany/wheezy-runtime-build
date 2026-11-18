@@ -34,3 +34,6 @@
 [submodule "upstream/httpd"]
 	path = upstream/httpd
 	url = https://github.com/apache/httpd.git
+[submodule "upstream/redis"]
+	path = upstream/redis
+	url = https://github.com/redis/redis.git

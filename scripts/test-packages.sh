@@ -15,6 +15,7 @@ if [ ! -f "$1" ]; then
 fi
 
 docker run --rm --platform linux/386 --mount "type=bind,src=$package_dir,dst=/packages,readonly" \
+    --mount "type=bind,src=$root/tests/redis-aof-recovery.sh,dst=/redis-aof-recovery.sh,readonly" \
     -i debian/eol@sha256:bddcd5525189f4afeb098fba34e3131c1483fe7f54aebfad9befcb481bd8f9ed /bin/sh -s <<'CONTAINER'
 set -eu
 export DEBIAN_FRONTEND=noninteractive
@@ -99,6 +100,10 @@ while IFS= read -r name; do
 done < /tmp/packages-list
 
 [ ! -s /tmp/service-start-attempts ] || fail 'package attempted to start a service'
+mkdir -p /tmp/redis-bin
+ln -s /usr/local/bin/redis-server-wheezy /tmp/redis-bin/redis-server
+ln -s /usr/local/bin/redis-cli-wheezy /tmp/redis-bin/redis-cli
+REDIS_BIN_DIR=/tmp/redis-bin sh /redis-aof-recovery.sh || fail 'Redis AOF recovery failed'
 ps -eo pid,comm > /tmp/processes || fail 'cannot inspect running processes'
 awk 'NR > 1 && $1 != 1 && $2 != "ps" { print; found=1 } END { exit found }' /tmp/processes || fail 'unexpected running process after installation'
 [ "$(command -v php)" = "$old_php" ] || fail 'original PHP command changed'

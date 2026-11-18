@@ -11,6 +11,7 @@ for file in libz.so.1 libsqlite3.so libcrypto.so.3 libssl.so.3 libcurl.so.4 \
     touch "$tmp/stage/lib/$file"
 done
 touch "$tmp/stage/bin/php" "$tmp/stage/bin/openssl" "$tmp/stage/bin/apt-https-wr" \
+    "$tmp/stage/bin/redis-server" "$tmp/stage/bin/redis-cli" \
     "$tmp/stage/share/licenses/apt/COPYING" "$tmp/stage/lib/ossl-modules/legacy.so" \
     "$tmp/stage/apache24/bin/httpd" "$tmp/stage/apache24/modules/libphp.so"
 printf '#!/bin/sh\nexit 0\n' > "$tmp/bin/patchelf"
